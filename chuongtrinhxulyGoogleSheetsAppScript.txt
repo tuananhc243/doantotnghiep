@@ -1,0 +1,499 @@
+//>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> Attendance and Registration Mode.
+//________________________________________________________________________________doGet()
+function doGet(e) { 
+  Logger.log(JSON.stringify(e));
+  var result = 'OK';
+  if (typeof e === 'undefined' || typeof e.parameter === 'undefined') {
+    result = 'No_Parameters';
+    return ContentService.createTextOutput(result);
+  }
+  else {
+    var sheet_id = '1hSZf22M03kwOrSwS5AemiUfWpFXPeewTFgkVTMmBjDI'; 	// Spreadsheet ID.
+    var sheet_UD = 'DANHSACH';   // Sheet name for user data.
+    var sheet_AT = 'DIEMDANH';  // Sheet name for attendance.
+    var sheet_MT = 'MOITRUONG';   // Sheet name for moi truong
+
+    var sheet_open = SpreadsheetApp.openById(sheet_id);
+    var sheet_user_data = sheet_open.getSheetByName(sheet_UD);
+    var sheet_attendence = sheet_open.getSheetByName(sheet_AT);
+    var sheet_moitruong = sheet_open.getSheetByName(sheet_MT);
+
+    var newRow = sheet_moitruong.getLastRow();
+
+    // sts_val là biến giữ trạng thái được gửi bởi ESP32.
+    // sts_val sẽ chứa "reg" hoặc "atc".
+    // "reg" = đăng ký người dùng mới.
+    // "atc" = điểm danh (giờ vào và giờ ra).
+ 
+    var sts_val = ""; // là biến lưu trữ của mode reg hoặc atc  (điểm danh hoặc đăng kí) cho thẻ RFID và Fingerprint
+    
+    // uid_val là biến lưu trữ UID của thẻ RFID hoặc móc khóa được gửi bởi ESP32.
+    var uid_val = "";
+    
+    // Cột lưu trữ UID.
+    var uid_column = "B";
+    
+    
+    // id_val là biến lưu trữ UID của fingerprintf hoặc móc khóa được gửi bởi ESP32.
+    var id_valfp = "";
+    
+    // Cột lưu trữ UID của fingerprintf.
+    //var id_column = "C";
+    var id_column = 3;
+
+    var sts_dht = ""; // là biến lưu trạng thái của dht11 (bao gồm temp, humi,...)
+
+    // Biến để lấy giá trị "Thời gian vào" từ trang tính.
+    var TI_val = "";
+    // Biến để lấy giá trị "Ngày" từ trang tính.
+    var Date_val = "";
+    
+    // rowDataLog nằm trong modfe writing hoặc reading của dht (if (sts_dht == 'write') )
+    var rowDataLog = [];
+    var Curr_Date = Utilities.formatDate(new Date(), "Asia/Jakarta", 'dd/MM/yyyy'); //
+    rowDataLog[0] = Curr_Date;  // Date will be written in column A (in the "DHT11 Sensor Data Logger" section).
+   
+    var Curr_Time = Utilities.formatDate(new Date(), "Asia/Jakarta", 'HH:mm:ss');
+    rowDataLog[1] = Curr_Time;  // Time will be written in column B (in the "DHT11 Sensor Data Logger" section).
+
+    //----------------------------------------Lấy giá trị của tham số được gửi bởi ESP32.
+    for (var param in e.parameter) {
+      Logger.log('In for loop, param=' + param);
+      var value = stripQuotes(e.parameter[param]);
+      Logger.log(param + ':' + e.parameter[param]);
+      switch (param) {
+        case 'sts':
+          sts_val = value;
+          break;
+
+        case 'uid':
+          uid_val = value;
+          break;
+
+        case 'id':
+          id_valfp = value;
+          break;
+
+        case 'dht':
+          sts_dht = value;
+          break;
+
+        case 'srs':
+          rowDataLog[2] = value;  // Sensor Reading Status will be written in column C (in the "DHT11 Sensor Data Logger" section).
+          //result += ',  Status W MT cot c';
+          break;
+
+        case 'temp':
+          rowDataLog[3] = value;  // The temperature value will be written in column D (in the "DHT11 Sensor Data Logger" section).
+          //result += ', Temperature W MT cot D';
+          break;
+
+        case 'humd':
+          rowDataLog[4] = value; // The humidity value will be written in column E (in the "DHT11 Sensor Data Logger" section).
+          //result += ', Humidity W MT cot E';
+          break;
+
+        case 'co2_ppm':
+          rowDataLog[5] = value; // The CO2 value will be written in column F (in the "DHT11 Sensor Data Logger" section).
+          //result += ', Humidity W MT cot E';
+          break;
+
+        case 'smoke_ppm':
+          rowDataLog[6] = value; // The SMOKE value will be written in column G (in the "DHT11 Sensor Data Logger" section).
+          //result += ', Humidity W MT cot E';
+          break;
+
+        case 'benzen_ppm':
+          rowDataLog[7] = value; // The BENZEN value will be written in column H (in the "DHT11 Sensor Data Logger" section).
+          //result += ', Humidity W MT cot E';
+          break;
+
+        default:
+          // result += ",unsupported_parameter";
+      }
+    }
+    //----------------------------------------
+    
+    //----------------------------------------Điều kiện để đăng ký người dùng mới.
+    if (sts_val == 'reg') {
+        var check_new_UID = checkUID(sheet_id, sheet_UD, 2, uid_val);
+        
+        // Điều kiện khi UID đã được đăng ký. Sau đó đăng ký đã bị hủy.
+        if (check_new_UID == true) {
+            result += ",regErr01"; // Err_01 = UID đã được đăng ký.
+            
+            // Gửi dữ liệu phản hồi tới ESP32.
+            return ContentService.createTextOutput(result);
+        }
+
+        // Ghi UID của người dùng mới vào trang tính "dữ liệu người dùng".
+        var getLastRowUIDCol = findLastRow(sheet_id, sheet_UD, uid_column);  // Tìm hàng để ghi UID của người dùng mới.
+        var newUID = sheet_open.getRange(uid_column + (getLastRowUIDCol + 1));
+        newUID.setValue(uid_val);
+        result += ",R_Successful";
+        
+        // Gửi dữ liệu phản hồi tới ESP32.
+        return ContentService.createTextOutput(result);
+    }
+
+    if (sts_val == 'regfp') { 
+      var check_new_UID = checkUID(sheet_id, sheet_UD, id_column, id_valfp);
+      
+      // Điều kiện khi UID đã được đăng ký. Sau đó đăng ký đã bị hủy.
+      if (check_new_UID == true) {
+          result += ",regErr01"; // Err_01 = UID đã được đăng ký.
+          
+          // Gửi dữ liệu phản hồi tới ESP32.
+          return ContentService.createTextOutput(result);
+      }
+
+      // Ghi UID của người dùng mới vào trang tính "dữ liệu người dùng".
+      var getLastRowUIDCol = findLastRow1(sheet_id, sheet_UD, id_column); // Tìm hàng để ghi UID của người dùng mới.
+
+      var newUIDRow = getLastRowUIDCol + 1; // Tính hàng mới để ghi
+      var newUIDCell = sheet_open.getSheetByName(sheet_UD).getRange(newUIDRow, id_column); // Lấy ô tại hàng mới và cột tương ứng
+      newUIDCell.setValue(id_valfp); // Ghi ID vào ô
+
+      result += ",R_Successful"; // Thông báo thành công
+      
+      // Gửi dữ liệu phản hồi tới ESP32.
+      return ContentService.createTextOutput(result);
+    }
+    //----------------------------------------
+
+    //----------------------------------------Điều kiện để điền điểm danh (Thời gian vào và thời gian ra).
+    if (sts_val == 'atc') {
+      var FUID_RFID = findUID(sheet_id, sheet_UD, 2, uid_val); // Tìm UID RFID
+      if (FUID_RFID == -1) {
+        result += ",atcErr01"; // UID chưa được đăng ký
+        return ContentService.createTextOutput(result);
+      }
+
+      var get_Range = sheet_user_data.getRange("A" + (FUID_RFID + 2));
+      var user_name_by_UID = get_Range.getValue();
+      
+      var enter_data = "time_in";
+      var num_row;
+      var Curr_Date = Utilities.formatDate(new Date(), "Asia/Jakarta", 'dd/MM/yyyy');
+      var Curr_Time = Utilities.formatDate(new Date(), "Asia/Jakarta", 'HH:mm:ss');
+      var Curr_Hour = parseInt(Utilities.formatDate(new Date(), "Asia/Jakarta", 'HH'));
+      var Curr_Min = parseInt(Utilities.formatDate(new Date(), "Asia/Jakarta", 'mm')); // Lấy phút hiện tại
+      var data = sheet_attendence.getDataRange().getDisplayValues();
+
+      // Xác định khung thời gian dựa trên giờ và phút (biến trung gian)
+      var time_slot = "";
+      if (
+        (Curr_Hour == 5 && Curr_Min >= 30) || // 5h30 đến trước 11h30
+        (Curr_Hour > 5 && Curr_Hour < 11) || 
+        (Curr_Hour == 11 && Curr_Min <= 30)
+      ) {
+        time_slot = "morning";
+      } else if (
+        (Curr_Hour == 11 && Curr_Min >= 45) || // 11h45 đến trước 15h30
+        (Curr_Hour > 11 && Curr_Hour < 15) || 
+        (Curr_Hour == 15 && Curr_Min <= 30)
+      ) {
+        time_slot = "noon";
+      } else if (
+        (Curr_Hour == 15 && Curr_Min > 30) || // 15h30 đến trước 18h30
+        (Curr_Hour > 15 && Curr_Hour < 24) || 
+        (Curr_Hour == 24 && Curr_Min <= 00)
+      ) {
+        time_slot = "evening";
+      }
+
+      // Tìm dữ liệu đã ghi trước đó
+      if (data.length > 1) {
+        for (var i = 0; i < data.length; i++) {
+          if (data[i][1] == uid_val && data[i][2] == Curr_Date) {
+            // Kiểm tra thời gian dựa trên khung giờ (sử dụng cả giờ và phút)
+            var time_in_hour = parseInt(data[i][3].split(':')[0]); // Giờ của Time In
+            var time_in_min = parseInt(data[i][3].split(':')[1]); // Phút của Time In
+
+            if (
+              (time_slot == "morning" && 
+                ((time_in_hour == 5 && time_in_min >= 30) || 
+                (time_in_hour > 5 && time_in_hour < 11) || 
+                (time_in_hour == 11 && time_in_min <= 30))
+              ) ||
+              (time_slot == "noon" && 
+                ((time_in_hour == 11 && time_in_min >= 45) || 
+                (time_in_hour > 11 && time_in_hour < 15) || 
+                (time_in_hour == 15 && time_in_min <= 30))
+              ) ||
+              (time_slot == "evening" && 
+                ((time_in_hour == 15 && time_in_min > 30) || 
+                (time_in_hour > 15 && time_in_hour < 24) || 
+                (time_in_hour == 24 && time_in_min <= 00))
+              )
+            ) {
+              if (data[i][4] == "") {
+                // Time In đã tồn tại, chuẩn bị ghi Time Out
+                TI_val = data[i][3];
+                enter_data = "time_out";
+                num_row = i + 1;
+                break;
+              } else {
+                // Đã hoàn tất Time In và Time Out
+                enter_data = "finish";
+              }
+            }
+          }
+        }
+      }
+
+      // Ghi dữ liệu Time In
+      if (enter_data == "time_in") {
+        sheet_attendence.insertRows(2);
+        sheet_attendence.getRange("A2").setValue(user_name_by_UID);
+        sheet_attendence.getRange("B2").setValue(uid_val);
+        sheet_attendence.getRange("C2").setValue(Curr_Date);
+        sheet_attendence.getRange("D2").setValue(Curr_Time);
+        SpreadsheetApp.flush();
+
+        result += ",TI_Successful" + "," + user_name_by_UID + "," + Curr_Date + "," + Curr_Time;
+        return ContentService.createTextOutput(result);
+      }
+
+      // Ghi dữ liệu Time Out
+      if (enter_data == "time_out") {
+        sheet_attendence.getRange("E" + num_row).setValue(Curr_Time);
+        result += ",TO_Successful" + "," + user_name_by_UID + "," + Curr_Date + "," + TI_val + "," + Curr_Time;
+        return ContentService.createTextOutput(result);
+      }
+
+      // Đã hoàn tất cả Time In và Time Out trong khung giờ
+      if (enter_data == "finish") {
+        result += ",atcInf01"; // Hoàn tất trong khung giờ
+        return ContentService.createTextOutput(result);
+      }
+    }
+
+
+    if (sts_val == 'atcfp') {
+      var FUID_FP = findUID(sheet_id, sheet_UD, 3, id_valfp); // Tìm UID RFID
+      if (FUID_FP == -1) {
+        result += ",atcErr01"; // UID chưa được đăng ký
+        return ContentService.createTextOutput(result);
+      }
+
+      var get_Range = sheet_user_data.getRange("A" + (FUID_FP + 2));
+      var user_name_by_UID = get_Range.getValue();
+      
+      var enter_data = "time_in";
+      var num_row;
+      var Curr_Date = Utilities.formatDate(new Date(), "Asia/Jakarta", 'dd/MM/yyyy');
+      var Curr_Time = Utilities.formatDate(new Date(), "Asia/Jakarta", 'HH:mm:ss');
+      var Curr_Hour = parseInt(Utilities.formatDate(new Date(), "Asia/Jakarta", 'HH'));
+      var Curr_Min = parseInt(Utilities.formatDate(new Date(), "Asia/Jakarta", 'mm')); // Lấy phút hiện tại
+      var data = sheet_attendence.getDataRange().getDisplayValues();
+
+      // Xác định khung thời gian dựa trên giờ và phút (biến trung gian)
+      var time_slot = "";
+      if (Curr_Hour >= 5 && (Curr_Hour < 11 || (Curr_Hour == 11 && Curr_Min == 0))) {
+        time_slot = "morning";
+      } else if (Curr_Hour >= 11 && (Curr_Hour < 17 || (Curr_Hour == 17 && Curr_Min == 0))) {
+        time_slot = "noon";
+      } else if (Curr_Hour >= 17 && Curr_Hour < 24) {
+        time_slot = "evening";
+      }
+
+      // Tìm dữ liệu đã ghi trước đó
+      if (data.length > 1) {
+        for (var i = 1; i < data.length; i++) { // Bỏ qua tiêu đề
+          if (data[i][1] == id_valfp && data[i][2] == Curr_Date) {
+            var time_in_hour = parseInt(data[i][3].split(':')[0]); // Giờ của Time In
+            var time_in_min = parseInt(data[i][3].split(':')[1]); // Phút của Time In
+
+            // Kiểm tra khung giờ
+            if (
+              (time_slot == "morning" && time_in_hour >= 5 && (time_in_hour < 11 || (time_in_hour == 11 && time_in_min == 0))) ||
+              (time_slot == "noon" && time_in_hour >= 11 && (time_in_hour < 17 || (time_in_hour == 17 && time_in_min == 0))) ||
+              (time_slot == "evening" && time_in_hour >= 17 && time_in_hour < 24)
+            ) {
+              if (data[i][4] == "") { // Nếu cột Time Out trống
+                TI_val = data[i][3]; // Lấy giá trị Time In
+                enter_data = "time_out";
+                num_row = i + 1;
+                break;
+              } else {
+                enter_data = "finish"; // Time Out đã được ghi
+              }
+            }
+          }
+        }
+      }
+
+
+      // Ghi dữ liệu Time In
+      if (enter_data == "time_in") {
+        sheet_attendence.insertRows(2);
+        sheet_attendence.getRange("A2").setValue(user_name_by_UID);
+        sheet_attendence.getRange("B2").setValue(id_valfp);
+        sheet_attendence.getRange("C2").setValue(Curr_Date);
+        sheet_attendence.getRange("D2").setValue(Curr_Time);
+        SpreadsheetApp.flush();
+
+        result += ",TI_Successful" + "," + user_name_by_UID + "," + Curr_Date + "," + Curr_Time;
+        return ContentService.createTextOutput(result);
+      }
+
+      // Ghi dữ liệu Time Out
+      if (enter_data == "time_out") {
+        sheet_attendence.getRange("E" + num_row).setValue(Curr_Time);
+        result += ",TO_Successful" + "," + user_name_by_UID + "," + Curr_Date + "," + TI_val + "," + Curr_Time;
+        return ContentService.createTextOutput(result);
+      }
+
+      // Đã hoàn tất cả Time In và Time Out trong khung giờ
+      if (enter_data == "finish") {
+        result += ",atcInf01"; // Hoàn tất trong khung giờ
+        return ContentService.createTextOutput(result);
+      }
+    }
+
+
+    // gửi dữ liệu về esp32
+    if (sts_val == 'read') {
+      var sheet_name = "DIEMDANH";  // Sheet Name in Google Sheets.
+      var sheet_target = sheet_open.getSheetByName(sheet_name);
+      
+      var all_Data = sheet_target.getDataRange().getDisplayValues(); // Lấy tất cả dữ liệu từ trang DIEMDANH.
+      
+      // Mảng để lưu trữ dữ liệu không có thời gian ra (time out).
+      var filtered_Data = [];
+      
+      // Lấy ngày hiện tại.
+      var Curr_Date = Utilities.formatDate(new Date(), "Asia/Jakarta", 'dd/MM/yyyy');
+
+      // Duyệt qua từng hàng và kiểm tra xem có thời gian ra hay không.
+      for (var i = 1; i < all_Data.length; i++) { // Bắt đầu từ hàng 1 để bỏ qua tiêu đề
+        if (all_Data[i][2] == Curr_Date && all_Data[i][4] == "") { // Kiểm tra ngày và không có time out
+          filtered_Data.push(all_Data[i]); // Thêm hàng vào mảng filtered_Data
+        }
+      }
+
+      return ContentService.createTextOutput(JSON.stringify(filtered_Data)); // Trả về dữ liệu không có time out
+    }
+
+    //----------------------------------------
+    
+
+    if (sts_dht == 'write') {
+      // Chèn hàng mới vào dòng thứ 2, di chuyển dữ liệu cũ xuống
+      sheet_moitruong.insertRows(2);
+  
+      // Ghi dữ liệu mới vào dòng thứ 2
+      var newRangeDataLog = sheet_moitruong.getRange(2,1,1,rowDataLog.length);
+      newRangeDataLog.setValues([rowDataLog]);
+  
+      // Ghi log để kiểm tra dữ liệu
+      Logger.log(JSON.stringify(rowDataLog));
+
+      // Tùy chọn: Giới hạn số lượng hàng tối đa nếu cần thiết
+      maxRowData(50);
+
+      return ContentService.createTextOutput(result);
+    }
+
+    //hiện tại không dùng để đọc dữ liệu môi trường về
+    if (sts_dht == 'read') {
+      var all_Data = sheet_moitruong.getRange('A2:H2').getValues();
+      return ContentService.createTextOutput(JSON.stringify(all_Data));
+    }
+
+    // Hàm maxRowData để giới hạn số lượng hàng trong sheet
+    function maxRowData(allRowsAfter) {
+      var sheet = SpreadsheetApp.openById('1KPcfkeARE379Go7ahoStyfsVTHyoi1PVYtDSjrsrorg').getSheetByName('MOITRUONG');
+      var lastRow = sheet.getLastRow();
+      
+      // Kiểm tra xem số hàng để xóa có hợp lệ hay không
+      if (allRowsAfter < lastRow) {
+        var numRowsToClear = lastRow - allRowsAfter;
+        sheet.getRange(allRowsAfter + 1, 1, numRowsToClear, sheet.getLastColumn()).clearContent();
+      }
+    }
+
+}
+  //----------------------------------------
+  
+}
+//________________________________________________________________________________
+
+//________________________________________________________________________________stripQuotes()
+function stripQuotes( value ) {
+  return value.replace(/^["']|['"]$/g, "");
+}
+//________________________________________________________________________________
+
+//________________________________________________________________________________findLastRow()
+// Hàm tìm hàng cuối cùng trong một cột nhất định.
+
+function findLastRow(id_sheet, name_sheet, name_column) {
+  var spreadsheet = SpreadsheetApp.openById(id_sheet);
+  var sheet = spreadsheet.getSheetByName(name_sheet);
+  var lastRow = sheet.getLastRow();
+
+  var range = sheet.getRange(name_column + lastRow);
+
+  if (range.getValue() !== "") {
+    return lastRow;
+  } else {
+    return range.getNextDataCell(SpreadsheetApp.Direction.UP).getRow();
+  }
+}
+function findLastRow1(id_sheet, name_sheet, column_index) {
+    var spreadsheet = SpreadsheetApp.openById(id_sheet);
+    var sheet = spreadsheet.getSheetByName(name_sheet);
+    var lastRow = sheet.getLastRow();
+    
+    // Kiểm tra giá trị ô cuối cùng trong cột
+    var range = sheet.getRange(lastRow, column_index);
+    
+    if (range.getValue() !== "") {
+        return lastRow; // Nếu ô cuối cùng không rỗng
+    } else {
+        return range.getNextDataCell(SpreadsheetApp.Direction.UP).getRow(); // Tìm hàng không rỗng gần nhất
+    }
+}
+//________________________________________________________________________________findUID() 
+
+function findUID(id_sheet, name_sheet, column_index, searchString) {
+  var open_sheet = SpreadsheetApp.openById(id_sheet);
+  var sheet = open_sheet.getSheetByName(name_sheet);
+  var columnValues = sheet.getRange(2, column_index, sheet.getLastRow()).getValues();  // 1st is header row.
+  var searchResult = columnValues.findIndex(searchString);  // Row Index - 2.
+
+  return searchResult;
+}
+//________________________________________________________________________________
+
+//________________________________________________________________________________checkUID()
+// Hàm checkUID kiểu String
+function checkUID(id_sheet, name_sheet, column_index, searchString) {
+  var open_sheet = SpreadsheetApp.openById(id_sheet);
+  var sheet = open_sheet.getSheetByName(name_sheet); 
+  var columnValues = sheet.getRange(2, column_index, sheet.getLastRow()).getValues();  // 1st is header row.
+  var searchResult = columnValues.findIndex(searchString);  // Row Index - 2.
+
+  if(searchResult != -1 ) {
+    // searchResult + 2 is row index.
+    sheet.setActiveRange(sheet.getRange(searchResult + 2, 4)).setValue("UID has been registered in this row.");
+    return true;
+  } else {
+    return false;
+  }
+}
+
+//________________________________________________________________________________
+
+//________________________________________________________________________________findIndex()
+Array.prototype.findIndex = function(search){
+  if(search == "") return false;
+  for (var i=0; i<this.length; i++)
+    if (this[i].toString().indexOf(search) > -1 ) return i;
+
+  return -1;
+}
+//________________________________________________________________________________
+//<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
