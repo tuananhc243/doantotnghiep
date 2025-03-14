@@ -46,8 +46,8 @@ const char* password = "25101973"; //--> Your wifi password
 //const char* ssid = "Nguyen Le";  //--> Your wifi name
 //const char* password = "12345678"; //--> Your wifi password
 //.......................................................token của bot tu BotFather va id cua nguoi nhan
-const char* botToken = "7228680901:AAGkLGAR6GKrWZ9PRUXmJ98kpbpPw3bgEh0";
-const char* chatID = "1754293971";
+const char* botToken = "7228680901:AAGkLGZ9PRUXmJ98kpbpPw3bgEh0";
+const char* chatID = "1793971";
 
 //---------------------------------------------------------------- // Google script Web_App_URL //--------------------------------------------------------------------
 String Web_App_URL = "https://script.google.com/macros/s/AKfycbweE4TTXY9Qr1dcXFMQ9Y9S6FFs6NcxLaKp0zZMuUHZQDLm5wQq_YgjGUvQlBcusLE9Hw/exec";
