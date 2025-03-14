@@ -8,7 +8,7 @@ function doGet(e) {
     return ContentService.createTextOutput(result);
   }
   else {
-    var sheet_id = '1hSZf22M03kwOrSwS5AemiUfWpFXPeewTFgkVTMmBjDI'; 	// Spreadsheet ID.
+    var sheet_id = '1hSZf22M0pFXPeewTFgkVTMmBjDI'; 	// Spreadsheet ID.
     var sheet_UD = 'DANHSACH';   // Sheet name for user data.
     var sheet_AT = 'DIEMDANH';  // Sheet name for attendance.
     var sheet_MT = 'MOITRUONG';   // Sheet name for moi truong
